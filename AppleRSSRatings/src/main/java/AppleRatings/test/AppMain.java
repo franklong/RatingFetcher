@@ -13,11 +13,13 @@ import com.sun.syndication.feed.synd.SyndEntry;
 public class AppMain {
 	/**
 	 *usage: CommentFetcher
-		 -e,--excel            Use EXCEL format
-		 -f,--filename <arg>   File name to save comments to, will append
-		 -d,--datecolumn       Sort on multiple columns (takes a comma delimited string of zero based numbers e.g. 2,1,3)
-		 -u,--update           Append latest updates to file, default is to overwrite with latest 500
-		 -h,--help             Display usage
+ 		-d,--datecolumn <arg>       Zero based index of the date column for sorting
+ 		-e,--excel                  Use EXCEL format
+ 		-eto,--emailTo <arg>        Email to. Multiple email addresses should be separated by a space
+ 		-f,--filename <arg>         File name to save ratings to, will append
+ 		-h,--help                   Display usage
+ 		-r,--ratingBoundary <arg>   Send email alert comprising of all star ratings at this number or below (default is 2)
+ `		-u,--update                 Append latest updates to file, default is to overwrite with latest 500
 	*/
 	
 	private static CSVFormat mCVSFormat = CSVFormat.DEFAULT;
@@ -41,14 +43,14 @@ public class AppMain {
 		List<SyndEntry> lowRatingsList = new ArrayList<SyndEntry>();  
 		if (mUpdateMode){
 			System.out.println("Fetching update");
-			lowRatingsList = ratinghFetcher.fetchUpdateAndSave(mFileName, mCVSFormat, mStartLink, mColDate, RETRY, mAlertRating);
+			lowRatingsList = ratinghFetcher.fetchUpdateAndAppend(mFileName, mCVSFormat, mStartLink, mColDate, RETRY, mAlertRating);
 			if(mSendMail){
 				ratinghFetcher.sendMail(lowRatingsList, "autotest", mEmailToList, "localhost", 
 						"Low Ratings", mAlertRating, "we7phone@gmail.com", "we7rocks");
 			}
 		}else{
 			System.out.println("Fetching all");
-			ratinghFetcher.fetchAllAndSave(mFileName, mCVSFormat, mStartLink, mColDate, RETRY);
+			ratinghFetcher.fetchAllAndWrite(mFileName, mCVSFormat, mStartLink, mColDate, RETRY);
 		}
 	}
 
@@ -71,7 +73,7 @@ public class AppMain {
 		CommandLine commandLine = null;
 		try {
 			commandLine = cmdLineGnuParser.parse(options, args);
-		} catch (ParseException e) {
+		} catch (Exception e) {
 			e.printStackTrace();
 			formatter.printHelp( "CommentFetcher", options);
 			System.exit(ERROR);
@@ -100,11 +102,8 @@ public class AppMain {
 		if (commandLine.hasOption("eto")){
 			mSendMail=true;
 			mEmailToList = commandLine.getOptionValue("eto").split(","); 
-		}else{
-			formatter.printHelp( "CommentFetcher", options);
-			System.exit(ERROR);
 		}
-		if (commandLine.hasOption('r')){
+		if (commandLine.hasOption('u')){
 			if(commandLine.getOptionValue('r') != null && isNumeric(commandLine.getOptionValue('r'))){
 				mAlertRating =  Integer.parseInt(commandLine.getOptionValue('r')); 
 			}else{

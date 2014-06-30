@@ -17,26 +17,33 @@ import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Properties;
+
 import javax.mail.Message;
 import javax.mail.PasswordAuthentication;
 import javax.mail.Session;
 import javax.mail.Transport;
 import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeMessage;
+
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVPrinter;
 import org.apache.commons.csv.CSVRecord;
 import org.jdom.Element;
+import org.rendersnake.HtmlAttributes;
+import org.rendersnake.HtmlCanvas;
+import org.rendersnake.Renderable;
+import org.rendersnake.tools.PrettyWriter;
 import org.rometools.fetcher.FeedFetcher;
 import org.rometools.fetcher.impl.FeedFetcherCache;
 import org.rometools.fetcher.impl.HashMapFeedInfoCache;
 import org.rometools.fetcher.impl.HttpURLFeedFetcher;
+
 import com.sun.syndication.feed.synd.SyndContent;
 import com.sun.syndication.feed.synd.SyndEntry;
 import com.sun.syndication.feed.synd.SyndFeed;
 import com.sun.syndication.feed.synd.SyndLink;
 
-public class RatingFetcher {
+public class RatingFetcher implements Renderable{
 	/**
 	 *usage: CommentFetcher
 		 -e,--excel            Use EXCEL format
@@ -45,15 +52,14 @@ public class RatingFetcher {
 		 -u,--update           Append latest updates to file, default is to overwrite with latest 500
 		 -h,--help             Display usage
 	*/
-	
 	private CSVPrinter mPrinter = null;
 	public static final int ERROR=-1; 
 	public static String mStartLink = "https://itunes.apple.com/gb/rss/customerreviews/page=1/id=646362701/sortby=mostrecent/xml?urlDesc=/customerreviews/page=1/id=646362701/sortby=mostrecent/xml";
 		
-	public void fetchAllAndSave(final String pFilename, CSVFormat pFormat, final String pStartURL, final int pDateColumnIndex, final int pRetry){
+	public void fetchAllAndWrite(final String pFilename, CSVFormat pFormat, final String pStartURL, final int pDateColumnIndex, final int pRetry){
 		List<SyndEntry> allEnteries = fetchAll(pStartURL, pRetry);
 		removeNonRatingsSynd(allEnteries);
-		appendCommentData(allEnteries, pFilename, pFormat);
+		writeCommentData(allEnteries, pFilename, pFormat, false);
 		List<CSVRecord> allRecords = readAllRecordsFromFile(pFilename, pFormat);
 		sortCommentsListByDate(allRecords, pDateColumnIndex);
 		writeRecordData(allRecords, pFilename, pFormat);
@@ -75,11 +81,11 @@ public class RatingFetcher {
 		return lowRatings;
 	}
 	
-	public List<SyndEntry> fetchUpdateAndSave(final String pFilename, CSVFormat pFormat, final String pStartURL, int pDateColumnIndex, final int pRetry, final int pRatingAlert){
+	public List<SyndEntry> fetchUpdateAndAppend(final String pFilename, CSVFormat pFormat, final String pStartURL, int pDateColumnIndex, final int pRetry, final int pRatingAlert){
 		Date latestDate = getLatestDateFromFile(pFilename, pFormat, pDateColumnIndex);
 		List<SyndEntry> latestEnteries = fetchLatest(pStartURL, latestDate, pRetry);
 		List<SyndEntry> lowEnteries = getLowRatings(latestEnteries, pRatingAlert);
-		appendCommentData(latestEnteries, pFilename, pFormat);
+		writeCommentData(latestEnteries, pFilename, pFormat, true);
 		List<CSVRecord> allRecords = readAllRecordsFromFile(pFilename, pFormat);
 		sortCommentsListByDate(allRecords, pDateColumnIndex);
 		writeRecordData(allRecords, pFilename, pFormat);
@@ -116,9 +122,9 @@ public class RatingFetcher {
 	}
 		
 	@SuppressWarnings("unchecked")
-	public void appendCommentData(final List<SyndEntry> pSyndEntryList, final String pFileName, final CSVFormat pFormat){
+	public void writeCommentData(final List<SyndEntry> pSyndEntryList, final String pFileName, final CSVFormat pFormat, final boolean pAppend){
 		try {
-			mPrinter = new CSVPrinter(new PrintWriter(new FileWriter(pFileName, true)), pFormat);
+			mPrinter = new CSVPrinter(new PrintWriter(new FileWriter(pFileName, pAppend)), pFormat);
 		} catch (IOException e) {
 			e.printStackTrace();
 			System.exit(ERROR);
@@ -344,6 +350,11 @@ public class RatingFetcher {
 		 return rating;
 	}
 	
+	private String getContent(SyndEntry pEntry){
+		SyndContent content = (SyndContent) pEntry.getContents().get(0);
+  		return content.getValue().replaceAll("\\n", "");
+	}
+	
 	
 	//====================================================EMAIL===============================================
 	
@@ -376,38 +387,35 @@ public class RatingFetcher {
 	            for (String recipient : pTo){
 	            	 message.addRecipient(Message.RecipientType.TO, new InternetAddress(recipient));
 	            }
-	            StringBuilder sb = new StringBuilder();
-	            sb.append("<title>Comments which have a rating less than or equal to "+ pAlertRating);
-	            sb.append("</title>");
-	            sb.append("<table>");
-	            sb.append("<tr>");
-            	sb.append("<th>Rating</th>");
-            	sb.append("<th>Comment</th>");
-            	sb.append("<th>Date</th>");
-            	sb.append("</tr>");
-            	for (SyndEntry entry :pLowRatingsListSyndry){
-            		sb.append("<tr>");
-	            	sb.append("<td>");
-	                sb.append(getRatingFromEntry(entry));
-	                sb.append("</td>");
-	                sb.append("<td>");
-	                sb.append(entry.getAuthor());
-	                sb.append("</td>");
-	                sb.append("<td>");
-	                sb.append(entry.getTitle());
-	                sb.append("</td>");
-	                sb.append("<td>");
-	                SyndContent content = (SyndContent) entry.getContents().get(0);
-	                sb.append(content.getValue().replaceAll("\\n", ""));
-	                sb.append("</td>");
-	                sb.append("<td>");
-	                sb.append(entry.getUpdatedDate().toString());
-	                sb.append("</td>");
-	                sb.append("\n\n");
-	                sb.append("</tr>");
-            	}    
-		        sb.append("</table>");
-		        message.setContent(sb.toString(),"text/html");
+	            HtmlCanvas html = new HtmlCanvas()
+	               .h4()
+	                .content("Comments which have a rating less than or equal to " + pAlertRating)
+	                 .table(new HtmlAttributes("border", "1"))
+	                  .tr()
+	                  .th().content("Rating")
+	                  .th().content("Author")
+	                  .th().content("Title")
+	                  .th().content("Comment")
+	                  .th().content("Date")
+	                  ._tr();
+	                  for (SyndEntry entry :pLowRatingsListSyndry){
+	                	  html
+	                	   	.tr()
+	                	  		.td()
+	                	  			.content(String.valueOf(getRatingFromEntry(entry)))
+	                	  		.td()
+	                	  			.content(entry.getAuthor())
+	                	  		.td()
+	                	  			.content(entry.getTitle())
+	                	  		.td()
+	                	  			.content(getContent(entry))
+	                	  		.td()
+	                	  			.content(entry.getUpdatedDate().toString())
+	                	  	._tr();
+	                  }	             	  
+	                  html 
+	                  ._table();
+	            message.setContent(html.toHtml(),"text/html");
 	            transport.connect();
 	            transport.sendMessage(message,message.getRecipients(Message.RecipientType.TO));
 	            transport.close();
@@ -415,5 +423,11 @@ public class RatingFetcher {
 	        	exception.printStackTrace();
 	        }
 	}
+
+	public void renderOn(HtmlCanvas arg0) throws IOException {
+		// TODO Auto-generated method stub
+		
+	}
+	
 }
 
