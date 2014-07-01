@@ -6,7 +6,6 @@ import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.GnuParser;
 import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Options;
-import org.apache.commons.cli.ParseException;
 import org.apache.commons.csv.CSVFormat;
 import com.sun.syndication.feed.synd.SyndEntry;
 
@@ -28,9 +27,6 @@ public class AppMain {
 	private static boolean mUpdateMode=false;
 	private static boolean mSendMail=false;
 	private static int mColDate=3;
-	private static String mEmailTo = "";
-	private static final String mHost = "localhost";
-	private static final String mSubject = "Low Ratings";
 	public static int mAlertRating = 2;
 	public static final int ERROR=-1;
 	public static final int RETRY=3;

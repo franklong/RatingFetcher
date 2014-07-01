@@ -31,11 +31,10 @@ import org.apache.commons.csv.CSVRecord;
 import org.jdom.Element;
 import org.rendersnake.HtmlAttributes;
 import org.rendersnake.HtmlCanvas;
-import org.rendersnake.Renderable;
-import org.rendersnake.tools.PrettyWriter;
 import org.rometools.fetcher.FeedFetcher;
-import org.rometools.fetcher.impl.FeedFetcherCache;
-import org.rometools.fetcher.impl.HashMapFeedInfoCache;
+import org.rometools.fetcher.FetcherEvent;
+import org.rometools.fetcher.FetcherListener;
+import org.rometools.fetcher.impl.DiskFeedInfoCache;
 import org.rometools.fetcher.impl.HttpURLFeedFetcher;
 
 import com.sun.syndication.feed.synd.SyndContent;
@@ -43,7 +42,7 @@ import com.sun.syndication.feed.synd.SyndEntry;
 import com.sun.syndication.feed.synd.SyndFeed;
 import com.sun.syndication.feed.synd.SyndLink;
 
-public class RatingFetcher implements Renderable{
+public class RatingFetcher{
 	/**
 	 *usage: CommentFetcher
 		 -e,--excel            Use EXCEL format
@@ -51,6 +50,8 @@ public class RatingFetcher implements Renderable{
 		 -d,--datecolumn       Sort on multiple columns (takes a comma delimited string of zero based numbers e.g. 2,1,3)
 		 -u,--update           Append latest updates to file, default is to overwrite with latest 500
 		 -h,--help             Display usage
+		 
+		 //Does not use the DiskFeedInfoCache Caching functionality built into ROME, this doesn't always work
 	*/
 	private CSVPrinter mPrinter = null;
 	public static final int ERROR=-1; 
@@ -178,40 +179,39 @@ public class RatingFetcher implements Renderable{
 			
 	@SuppressWarnings("unchecked")
 	public List<SyndEntry> fetchAll(final String pURL, final int pRetry){
-	  FeedFetcherCache feedInfoCache = HashMapFeedInfoCache.getInstance();
-	  FeedFetcher feedFetcher = new HttpURLFeedFetcher(feedInfoCache);
-	  List<SyndEntry> allEnteries = new ArrayList<SyndEntry>();
-	  String next = pURL;
-	  String self = pURL;
-	  String last = null;
-	  int retryCount = pRetry;
-	  URL fetchURL = null;
-	  SyndFeed feed = null;
-	  int page=0;
-	  
-	  while (!self.equals(last)) {
-		System.out.println(String.format("Fetching ratings - page %02d", ++page));
-		boolean success=false;
-		try {
-		  fetchURL = new URL(next);
-		} catch (MalformedURLException e) {
-		}
-		while(retryCount > 0 && success == false){
-			try {
-				feed = feedFetcher.retrieveFeed(fetchURL);
-				last = getLinkText("last", feed).split("\\?")[0]; //remove descriptor for comparison
-				next = getLinkText("next", feed);
-				self = getLinkText("self", feed).split("\\?")[0]; //remove descriptor for comparison
-				allEnteries.addAll(feed.getEntries());
-				success=true;
-			 } catch (Exception e) {
-				retryCount--;
-				System.out.println("Failed to fetch ratings retrying ...");
-				e.printStackTrace();
+		  FeedFetcher feedFetcher = new HttpURLFeedFetcher();
+		  feedFetcher.addFetcherEventListener(new FetcherListener(){
+			public void fetcherEvent(FetcherEvent event) {
+				if(FetcherEvent.EVENT_TYPE_FEED_RETRIEVED.equals(event.getEventType())){
+					System.out.println("- OK " + event.getUrlString());
+				}
 			}
-		}
-	  } 
-	  return allEnteries;		
+		  });
+		  List<SyndEntry> allEnteries = new ArrayList<SyndEntry>();
+		  String next = pURL;
+		  String self = pURL;
+		  String last = null;
+		  URL fetchURL = null;
+		  SyndFeed feed = null;
+		  int pageCount=10;
+		  int page=0;
+		  while (!self.equals(last) || page < pageCount) {
+				System.out.print(String.format("Fetching ratings - page %02d ", ++page));
+				try {
+				  fetchURL = new URL(next);
+				} catch (MalformedURLException e) {}
+				try {
+					feed = feedFetcher.retrieveFeed(fetchURL);
+					last = getLinkText("last", feed).split("\\?")[0]; //remove descriptor for comparison
+					next = getLinkText("next", feed);
+					self = getLinkText("self", feed).split("\\?")[0]; //remove descriptor for comparison
+					allEnteries.addAll(feed.getEntries());
+				 } catch (Exception ex) {
+						ex.printStackTrace();
+						System.exit(-1);
+				 }
+		   }		
+		   return allEnteries;
 	}
 	
 	public List<CSVRecord> readAllRecordsFromFile(final String pFilename, final CSVFormat pFormat){
@@ -308,9 +308,6 @@ public class RatingFetcher implements Renderable{
 		 System.out.println(String.format("Sorted %d records", pRecords.size()));
 	}
 	
-
-	//====================================================SAVE DATA====================================================
-	
 	public void closePrinter(){
 		if (mPrinter!=null){
 			try {
@@ -354,7 +351,6 @@ public class RatingFetcher implements Renderable{
 		SyndContent content = (SyndContent) pEntry.getContents().get(0);
   		return content.getValue().replaceAll("\\n", "");
 	}
-	
 	
 	//====================================================EMAIL===============================================
 	
@@ -423,11 +419,4 @@ public class RatingFetcher implements Renderable{
 	        	exception.printStackTrace();
 	        }
 	}
-
-	public void renderOn(HtmlCanvas arg0) throws IOException {
-		// TODO Auto-generated method stub
-		
-	}
-	
 }
-
