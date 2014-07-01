@@ -42,7 +42,7 @@ public class AppMain {
 			lowRatingsList = ratinghFetcher.fetchUpdateAndAppend(mFileName, mCVSFormat, mStartLink, mColDate, RETRY, mAlertRating);
 			if(mSendMail){
 				ratinghFetcher.sendMail(lowRatingsList, "autotest", mEmailToList, "localhost", 
-						"Low Ratings", mAlertRating, "we7phone@gmail.com", "we7rocks");
+						"Low Ratings", mAlertRating, "we7phone@gmail.com", "XXXXXXXXX");
 			}
 		}else{
 			System.out.println("Fetching all");
